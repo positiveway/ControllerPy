@@ -88,6 +88,7 @@ class Controller:
         tick = 1
 
         cap = {
+            # It's necessary to enable any mouse button. Otherwise Relative events would not work
             e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT, e.BTN_MIDDLE],
             e.EV_REL: [e.REL_X, e.REL_Y, e.REL_WHEEL_HI_RES, e.REL_HWHEEL_HI_RES]
         }
