@@ -1,31 +1,10 @@
 import asyncio
+import gc
 from threading import Thread
 from time import time, sleep
 
 import evdev
 from evdev import UInput, ecodes as e
-
-cap = {
-    e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT, e.BTN_MIDDLE],
-    e.EV_REL: [e.REL_X, e.REL_Y, e.REL_WHEEL_HI_RES, e.REL_HWHEEL_HI_RES]
-}
-ui = UInput(cap, name='example-device', version=0x3)
-
-
-def mouse_func(x, y):
-    ui.write(e.EV_REL, e.REL_X, x)
-    ui.write(e.EV_REL, e.REL_Y, -y)
-    ui.syn()
-
-
-def scroll_func(x, y):
-    ui.write(e.EV_REL, e.REL_HWHEEL_HI_RES, x)
-    ui.write(e.EV_REL, e.REL_WHEEL_HI_RES, y)
-    ui.syn()
-
-
-def get_interval(x, fast, slow):
-    return slow - (fast + (slow - fast) / 128 * (abs(x)))
 
 
 def get_sign(x):
@@ -41,6 +20,8 @@ class Movable:
     def __init__(self, fast, slow, func, tick) -> None:
         self.fast = fast
         self.slow = slow
+        self.output_range = slow - fast
+
         self.func = func
         self.tick = tick
 
@@ -50,6 +31,9 @@ class Movable:
         self.x, self.y = 0, 0
         self.timer_x, self.timer_y = self.fast, self.fast
 
+    def get_interval(self, x):
+        return self.output_range - self.output_range / 128 * abs(x)
+
     def move_in_interval(self, x, timer):
         timer -= self.tick
         move_by = 0
@@ -57,7 +41,7 @@ class Movable:
         if timer <= 0:
             if x != 0:
                 move_by = get_sign(x)
-                timer = get_interval(x, self.fast, self.slow)
+                timer = self.get_interval(x)
             else:
                 timer = self.fast
 
@@ -101,9 +85,25 @@ class Controller:
         scroll_fast, scroll_slow = 40, 160
         tick = 1
 
-        self.mouse = Movable(mouse_fast, mouse_slow, mouse_func, tick)
-        self.scroll = Movable(scroll_fast, scroll_slow, scroll_func, tick)
+        cap = {
+            e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT, e.BTN_MIDDLE],
+            e.EV_REL: [e.REL_X, e.REL_Y, e.REL_WHEEL_HI_RES, e.REL_HWHEEL_HI_RES]
+        }
+        self.ui = UInput(cap, name='example-device', version=0x3)
+
+        self.mouse = Movable(mouse_fast, mouse_slow, self.mouse_func, tick)
+        self.scroll = Movable(scroll_fast, scroll_slow, self.scroll_func, tick)
         Mover(self.mouse, self.scroll, tick)
+
+    def mouse_func(self, x, y):
+        self.ui.write(e.EV_REL, e.REL_X, x)
+        self.ui.write(e.EV_REL, e.REL_Y, -y)
+        self.ui.syn()
+
+    def scroll_func(self, x, y):
+        self.ui.write(e.EV_REL, e.REL_HWHEEL_HI_RES, x)
+        self.ui.write(e.EV_REL, e.REL_WHEEL_HI_RES, y)
+        self.ui.syn()
 
 
 async def handle_events(device, controller):
@@ -146,11 +146,14 @@ def main():
 
     devices = [evdev.InputDevice(f'/dev/input/event{dev_num}') for dev_num in dev_nums]
 
-    controller = Controller()
     loop = asyncio.get_event_loop()
+    controller = Controller()
 
     for device in devices:
         asyncio.ensure_future(handle_events(device, controller), loop=loop)
+
+    gc.disable()
+    gc.collect()
 
     loop.run_forever()
 
