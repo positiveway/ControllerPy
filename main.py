@@ -20,7 +20,9 @@ class Movable:
     def __init__(self, fast, slow, func, tick) -> None:
         self.fast = fast
         self.slow = slow
+
         self.output_range = slow - fast
+        self.slope = self.output_range / 128
 
         self.func = func
         self.tick = tick
@@ -32,7 +34,7 @@ class Movable:
         self.timer_x, self.timer_y = self.fast, self.fast
 
     def get_interval(self, x):
-        return self.output_range - self.output_range / 128 * abs(x)
+        return self.output_range - self.slope * abs(x)
 
     def move_in_interval(self, x, timer):
         timer -= self.tick
